@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --theme-color: #ffffff;
+            --theme-color-sub: rgba(255, 255, 255, 0.45);
+            --r-corner: 4cqh;
+            --apple-spring: cubic-bezier(0.25, 1, 0.2, 1);
+        }
+
+        html, body {
+            width: 100vw; height: 100vh; margin: 0; padding: 0;
+            background-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+            overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .player-outer {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            padding: 6cqh 8cqh;
+            box-sizing: border-box;
+            transition: opacity 1s ease-in-out, transform 1s ease-in-out;
+            opacity: 1;
+        }
+
+        .is-hidden { opacity: 0; transform: scale(0.95); pointer-events: none; }
+
+        .main-card {
+            width: 100%; height: 100%;
+            aspect-ratio: 1.6 / 1; 
+            container-type: size;
+            position: relative;
+            border-radius: var(--r-corner);
+            overflow: hidden;
+            box-shadow: 0 4cqh 10cqh rgba(0,0,0,0.6);
+            background-color: #000;
+        }
+
+        .bg-cover {
+            position: absolute; inset: -20%; 
+            background-size: cover; background-position: center;
+            filter: blur(10cqh) brightness(0.55); 
+            z-index: 0; transition: background-image 0.8s ease;
+        }
+
+        .overlay { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%); z-index: 1; }
+        .content-layer { position: relative; z-index: 2; height: 100%; padding: 6cqh 8cqh; display: flex; flex-direction: column; box-sizing: border-box; }
+        .info-header { margin-bottom: 2cqh; text-align: left; }
+        .title { font-size: 8cqh; font-weight: 900; color: var(--theme-color); letter-spacing: -0.02em; margin-bottom: 0.5cqh; text-shadow: 0 1cqh 3cqh rgba(0,0,0,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .artist { font-size: 3.5cqh; font-weight: 600; color: var(--theme-color-sub); letter-spacing: 0.05em; text-transform: uppercase; }
+        
+        .lyric-stage {
+            flex-grow: 1; position: relative;
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+            overflow: hidden;
+        }
+
+        #lyric-track { position: absolute; width: 100%; top: 35%; transition: transform 0.8s var(--apple-spring); will-change: transform; }
+
+        .lyric-line {
+            padding: 2cqh 4cqh; 
+            opacity: 0.35;
+            transition: all 0.7s var(--apple-spring);
+            transform: scale(0.92); transform-origin: left center;
+            text-align: left; 
+            min-height: 8cqh; padding-bottom: 3cqh; 
+            display: flex; flex-direction: column; gap: 0.8cqh;
+        }
+
+        .lyric-line.active { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 1cqh rgba(255,255,255,0.25)); }
+
+        /* 主歌词样式 */
+        .main-lyric {
+            font-size: 6cqh; font-weight: 700;
+            color: var(--theme-color-sub);
+            line-height: 1.3;
+        }
+        
+        /* 翻译歌词样式（字号略小，作为辅助展现） */
+        .sub-lyric {
+            font-size: 3.2cqh; font-weight: 600;
+            color: var(--theme-color-sub);
+            line-height: 1.3;
+            opacity: 0.8;
+        }
+
+        /* LRC 模式整行变白 */
+        .lyric-line.active:not(.is-karaoke) .main-lyric { color: var(--theme-color); }
+        .lyric-line.active .sub-lyric { color: var(--theme-color); opacity: 1; }
+
+        .char {
+            position: relative;
+            display: inline-block;
+            color: var(--theme-color-sub);
+            white-space: pre;
+        }
+        .lyric-line.active .char::after {
+            content: attr(data-text);
+            position: absolute; left: 0; top: 0;
+            color: var(--theme-color);
+            text-shadow: 0 0 1.5cqh rgba(255,255,255,0.6);
+            clip-path: inset(0 calc(100% - var(--fill, 0%)) 0 0);
+            transition: clip-path 0.05s linear; 
+        }
+
+        .progress-footer { margin-top: 2cqh; }
+        .time-row { display: flex; justify-content: space-between; font-size: 3cqh; font-weight: 700; color: var(--theme-color-sub); margin-bottom: 1.5cqh; font-variant-numeric: tabular-nums; }
+        .track { height: 1.2cqh; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
+        .fill { height: 100%; width: 0%; background: var(--theme-color); border-radius: 999px; transition: width 0.3s linear; }
+    </style>
+</head>
+<body>
+    <div class="player-outer" id="auto-hide-container">
+        <div class="main-card">
+            <div id="bg" class="bg-cover"></div>
+            <div class="overlay"></div>
+            <div class="content-layer">
+                <div class="info-header">
+                    <div class="title" id="title">-</div>
+                    <div class="artist" id="artist">-</div>
+                </div>
+                <div class="lyric-stage">
+                    <div id="lyric-track"></div>
+                </div>
+                <div class="progress-footer">
+                    <div class="time-row">
+                        <span id="time-curr">00:00</span>
+                        <span id="time-total">00:00</span>
+                    </div>
+                    <div class="track"><div class="fill" id="progress-bar"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:9863';
+        let currentTrackKey = "";
+        let lyricList = [];
+        let currentIndex = -1;
+        let pauseTimer = null;
+        let lastTrackSwitchTime = 0; 
+
+        function formatTime(ms) {
+            let s = Math.floor(ms / 1000);
+            return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+        }
+
+        // 🌟 核心：双语解析与融合引擎
+        function parseLyrics(raw, rawTlyric) {
+            lyricList = [];
+            if (!raw) return;
+            
+            // 1. 解析主歌词 (LRC 或 QRC)
+            let content = raw;
+            if (content.includes('LyricContent="')) {
+                const match = content.match(/LyricContent="([^"]+)"/);
+                if (match) content = match[1];
+            }
+            content = content.replace(/\\n/g, '\n').replace(/&quot;/g, '"');
+
+            const lines = content.split('\n');
+            const qLine = /^\[(\d+),(\d+)\](.*)/;
+
+            lines.forEach(l => {
+                const lineStr = l.trim();
+                const mQrc = qLine.exec(lineStr);
+                if (mQrc) {
+                    const lineStart = parseInt(mQrc[1]);
+                    const words = [];
+                    const parts = mQrc[3].split(/\((\d+),(\d+)\)/);
+                    
+                    for (let j = 0; j < parts.length - 1; j += 3) {
+                        const txt = parts[j];
+                        const wStart = parseInt(parts[j+1]);
+                        const wDur = parseInt(parts[j+2]);
+                        const absStart = wStart >= lineStart ? wStart : lineStart + wStart;
+                        if (txt !== "") {
+                            words.push({ start: absStart, dur: wDur, text: txt });
+                        }
+                    }
+                    if (words.length > 0) lyricList.push({ timeMs: lineStart, words: words, type: 'karaoke' });
+                } else {
+                    const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(lineStr);
+                    if (mLrc) {
+                        const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3]));
+                        const txt = mLrc[4].trim();
+                        if (txt && txt !== "//") lyricList.push({ timeMs: ms, text: txt, type: 'lrc' });
+                    }
+                }
+            });
+
+            // 2. 解析翻译歌词并模糊对齐
+            if (rawTlyric) {
+                let tContent = rawTlyric;
+                if (tContent.includes('LyricContent="')) {
+                    const m = tContent.match(/LyricContent="([^"]+)"/);
+                    if (m) tContent = m[1];
+                }
+                tContent = tContent.replace(/\\n/g, '\n').replace(/&quot;/g, '"');
+                const tLines = tContent.split('\n');
+                const tMap = [];
+                
+                tLines.forEach(l => {
+                    const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(l.trim());
+                    if (mLrc) {
+                        const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3]));
+                        const txt = mLrc[4].trim();
+                        if (txt && txt !== "//") tMap.push({ ms, txt });
+                    }
+                });
+
+                // 将翻译匹配到主歌词（容差值 1500ms）
+                lyricList.forEach(line => {
+                    let closest = null;
+                    let minDiff = 1500; 
+                    tMap.forEach(t => {
+                        const diff = Math.abs(t.ms - line.timeMs);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closest = t.txt;
+                        }
+                    });
+                    if (closest) line.tlyric = closest;
+                });
+            }
+
+            // 3. 渲染最终 DOM，合并主副双层
+            const track = document.getElementById('lyric-track');
+            track.innerHTML = lyricList.map((l, i) => {
+                let innerMain = "";
+                if (l.type === 'karaoke') {
+                    innerMain = l.words.map(w => {
+                        const safeText = w.text.replace(/"/g, '&quot;');
+                        return `<span class="char" data-text="${safeText}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`;
+                    }).join('');
+                } else {
+                    innerMain = l.text;
+                }
+                
+                const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
+                
+                return `<div class="lyric-line ${l.type === 'karaoke' ? 'is-karaoke' : ''}" id="line-${i}">
+                            <div class="main-lyric">${innerMain}</div>
+                            ${tHtml}
+                        </div>`;
+            }).join('');
+            track.style.transform = `translateY(0)`; 
+        }
+
+        async function update() {
+            try {
+                const q = await (await fetch(`${BASE_URL}/api/query`)).json();
+                
+                const container = document.getElementById('auto-hide-container');
+                const isPaused = q.player ? q.player.isPaused : q.isPaused;
+                const hasSong = q.player ? q.player.hasSong : true;
+
+                if (isPaused || !hasSong) {
+                    if (!pauseTimer) pauseTimer = setTimeout(() => container.classList.add('is-hidden'), 5000);
+                } else {
+                    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+                    container.classList.remove('is-hidden');
+                }
+
+                const track = q.track || q;
+                const trackKey = (track.title || '') + (track.author || '');
+
+                if (trackKey !== currentTrackKey) {
+                    currentTrackKey = trackKey;
+                    lastTrackSwitchTime = Date.now(); 
+                    
+                    document.getElementById('title').innerText = track.title;
+                    document.getElementById('artist').innerText = track.author;
+                    document.getElementById('bg').style.backgroundImage = `url('${track.cover || track.picUrl || ''}')`;
+                    
+                    const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
+                    
+                    // 🌟 核心：同时传入原歌词和翻译歌词供引擎处理
+                    parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || lrcRes.data || "", lrcRes.translatedLyric || "");
+                    currentIndex = -1;
+                }
+
+                const prog = await (await fetch(`${BASE_URL}/api/query/progress`)).json();
+                let currMs = prog.progress !== undefined ? prog.progress : prog;
+                
+                if (Date.now() - lastTrackSwitchTime < 2000 && currMs > 5000) {
+                    currMs = 0;
+                }
+
+                const totalMs = (track.duration || 0) < 100000 ? track.duration * 1000 : track.duration;
+
+                document.getElementById('time-curr').innerText = formatTime(currMs);
+                document.getElementById('time-total').innerText = formatTime(totalMs);
+                document.getElementById('progress-bar').style.width = `${Math.min((currMs/Math.max(totalMs, 1))*100, 100)}%`;
+
+                let newIndex = -1;
+                for (let i = lyricList.length - 1; i >= 0; i--) {
+                    if (currMs >= lyricList[i].timeMs) { newIndex = i; break; }
+                }
+
+                if (newIndex !== -1 && lyricList[newIndex].type === 'karaoke') {
+                    const lineEl = document.getElementById(`line-${newIndex}`);
+                    if (lineEl) {
+                        lineEl.querySelectorAll('.char').forEach(c => {
+                            const start = Number(c.getAttribute('data-start'));
+                            const dur = Number(c.getAttribute('data-dur')) || 1;
+                            let pct = 0;
+                            if (currMs >= start + dur) pct = 100;
+                            else if (currMs >= start) pct = ((currMs - start) / dur) * 100;
+                            c.style.setProperty('--fill', `${pct}%`);
+                        });
+                    }
+                }
+
+                if (newIndex !== currentIndex && newIndex !== -1) {
+                    const trackEl = document.getElementById('lyric-track');
+                    const lines = document.getElementsByClassName('lyric-line');
+                    if (currentIndex !== -1 && lines[currentIndex]) lines[currentIndex].classList.remove('active');
+                    currentIndex = newIndex;
+                    const targetLine = lines[currentIndex];
+                    if (targetLine) {
+                        targetLine.classList.add('active');
+                        const offset = targetLine.offsetTop + (targetLine.offsetHeight / 2);
+                        trackEl.style.transform = `translateY(-${offset}px)`;
+                    }
+                }
+            } catch (e) {}
+        }
+        
+        setInterval(update, 50);
+    </script>
+</body>
+</html>
