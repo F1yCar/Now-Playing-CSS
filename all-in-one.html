@@ -64,16 +64,35 @@
         #lyric-track { position: absolute; width: 100%; top: 35%; transition: transform 0.8s var(--apple-spring); will-change: transform; }
 
         .lyric-line {
-            padding: 2cqh 4cqh; font-size: 6cqh; font-weight: 700;
-            color: var(--theme-color-sub); opacity: 0.35;
+            padding: 2cqh 4cqh; 
+            opacity: 0.35;
             transition: all 0.7s var(--apple-spring);
             transform: scale(0.92); transform-origin: left center;
-            text-align: left; line-height: 1.3; min-height: 8cqh; padding-bottom: 3cqh; 
+            text-align: left; 
+            min-height: 8cqh; padding-bottom: 3cqh; 
+            display: flex; flex-direction: column; gap: 0.8cqh;
         }
 
         .lyric-line.active { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 1cqh rgba(255,255,255,0.25)); }
 
-        .lyric-line.active:not(.is-karaoke) { color: var(--theme-color); }
+        /* 主歌词样式 */
+        .main-lyric {
+            font-size: 6cqh; font-weight: 700;
+            color: var(--theme-color-sub);
+            line-height: 1.3;
+        }
+        
+        /* 翻译歌词样式（字号略小，作为辅助展现） */
+        .sub-lyric {
+            font-size: 3.2cqh; font-weight: 600;
+            color: var(--theme-color-sub);
+            line-height: 1.3;
+            opacity: 0.8;
+        }
+
+        /* LRC 模式整行变白 */
+        .lyric-line.active:not(.is-karaoke) .main-lyric { color: var(--theme-color); }
+        .lyric-line.active .sub-lyric { color: var(--theme-color); opacity: 1; }
 
         .char {
             position: relative;
@@ -133,10 +152,12 @@
             return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
         }
 
-        function parseLyrics(raw) {
+        // 🌟 核心：双语解析与融合引擎
+        function parseLyrics(raw, rawTlyric) {
             lyricList = [];
             if (!raw) return;
             
+            // 1. 解析主歌词 (LRC 或 QRC)
             let content = raw;
             if (content.includes('LyricContent="')) {
                 const match = content.match(/LyricContent="([^"]+)"/);
@@ -153,17 +174,13 @@
                 if (mQrc) {
                     const lineStart = parseInt(mQrc[1]);
                     const words = [];
-                    
-                    // 🌟 核心修正：严格用时间轴括号作为分割器，完美保留原文本所有标点符号
                     const parts = mQrc[3].split(/\((\d+),(\d+)\)/);
                     
                     for (let j = 0; j < parts.length - 1; j += 3) {
                         const txt = parts[j];
                         const wStart = parseInt(parts[j+1]);
                         const wDur = parseInt(parts[j+2]);
-                        
                         const absStart = wStart >= lineStart ? wStart : lineStart + wStart;
-                        // 只要文本不是完全为空（空格也算合法文本），就存入数组
                         if (txt !== "") {
                             words.push({ start: absStart, dur: wDur, text: txt });
                         }
@@ -179,17 +196,60 @@
                 }
             });
 
+            // 2. 解析翻译歌词并模糊对齐
+            if (rawTlyric) {
+                let tContent = rawTlyric;
+                if (tContent.includes('LyricContent="')) {
+                    const m = tContent.match(/LyricContent="([^"]+)"/);
+                    if (m) tContent = m[1];
+                }
+                tContent = tContent.replace(/\\n/g, '\n').replace(/&quot;/g, '"');
+                const tLines = tContent.split('\n');
+                const tMap = [];
+                
+                tLines.forEach(l => {
+                    const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(l.trim());
+                    if (mLrc) {
+                        const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3]));
+                        const txt = mLrc[4].trim();
+                        if (txt && txt !== "//") tMap.push({ ms, txt });
+                    }
+                });
+
+                // 将翻译匹配到主歌词（容差值 1500ms）
+                lyricList.forEach(line => {
+                    let closest = null;
+                    let minDiff = 1500; 
+                    tMap.forEach(t => {
+                        const diff = Math.abs(t.ms - line.timeMs);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closest = t.txt;
+                        }
+                    });
+                    if (closest) line.tlyric = closest;
+                });
+            }
+
+            // 3. 渲染最终 DOM，合并主副双层
             const track = document.getElementById('lyric-track');
             track.innerHTML = lyricList.map((l, i) => {
+                let innerMain = "";
                 if (l.type === 'karaoke') {
-                    const inner = l.words.map(w => {
+                    innerMain = l.words.map(w => {
                         const safeText = w.text.replace(/"/g, '&quot;');
                         return `<span class="char" data-text="${safeText}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`;
                     }).join('');
-                    return `<div class="lyric-line is-karaoke" id="line-${i}">${inner}</div>`;
                 } else {
-                    return `<div class="lyric-line" id="line-${i}">${l.text}</div>`;
+                    innerMain = l.text;
                 }
+                
+                const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
+                
+                return `<div class="lyric-line ${l.type === 'karaoke' ? 'is-karaoke' : ''}" id="line-${i}">
+                            <div class="main-lyric">${innerMain}</div>
+                            ${tHtml}
+                        </div>`;
             }).join('');
             track.style.transform = `translateY(0)`; 
         }
@@ -221,7 +281,9 @@
                     document.getElementById('bg').style.backgroundImage = `url('${track.cover || track.picUrl || ''}')`;
                     
                     const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
-                    parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || lrcRes.data || "");
+                    
+                    // 🌟 核心：同时传入原歌词和翻译歌词供引擎处理
+                    parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || lrcRes.data || "", lrcRes.translatedLyric || "");
                     currentIndex = -1;
                 }
 
