@@ -33,7 +33,14 @@
         }
 
         .lyric-line {
-            padding: 3vh 0; width: 100%; text-align: center;
+            padding: 3vh 0; 
+            
+            /* 🌟 核心修复：限制基础宽度为 85%，为放大动画预留 15% 的防裁切缓冲区 */
+            width: 85%; 
+            /* 🌟 增加断词保护：防止没有空格的超长英文连写撑爆容器 */
+            word-break: break-word; 
+            
+            text-align: center;
             transition: all 0.8s var(--apple-spring);
             transform-origin: center center; transform: scale(0.85);
             opacity: 0.35; filter: blur(2px);
@@ -89,43 +96,74 @@
         function parseLyrics(raw, rawTlyric) {
             lyricList = [];
             if (!raw) return;
-            let content = raw.includes('LyricContent="') ? raw.match(/LyricContent="([^"]+)"/)[1] : raw;
+
+            // 1. 强力脱壳
+            let content = raw;
+            try {
+                const decoded = JSON.parse(raw.startsWith('"') ? JSON.parse(raw) : raw);
+                content = decoded.content || decoded.karaokeLyric || decoded.lrc || raw;
+            } catch (e) {
+                if (content.includes('LyricContent="')) {
+                    const match = content.match(/LyricContent="([^"]+)"/);
+                    if (match) content = match[1];
+                }
+            }
+
             content = content.replace(/\\n/g, '\n').replace(/&quot;/g, '"');
-            
-            // 引擎 1：解析主歌词（支持 QRC 逐字和 LRC 行）
             const lines = content.split('\n');
-            const qLine = /^\[(\d+),(\d+)\](.*)/;
+            const qLineRegex = /^\[(\d+),(\d+)\](.*)/;
+
             lines.forEach(l => {
                 const lineStr = l.trim();
-                const mQrc = qLine.exec(lineStr);
+                if (!lineStr || lineStr.startsWith('{')) return;
+
+                const mQrc = qLineRegex.exec(lineStr);
                 if (mQrc) {
                     const lineStart = parseInt(mQrc[1]);
+                    const contentStr = mQrc[3].trimStart(); // 清除行首杂质
+                    
+                    // 🌟 核心引擎：使用容错切割，将时间标签和歌词文字炸成数组
+                    const parts = contentStr.split(/\((\d+),\s*(\d+)[^)]*\)/);
                     const words = [];
-                    const parts = mQrc[3].split(/\((\d+),(\d+)\)/);
-                    for (let j = 0; j < parts.length - 1; j += 3) {
-                        const txt = parts[j];
-                        const absStart = parseInt(parts[j+1]) >= lineStart ? parseInt(parts[j+1]) : lineStart + parseInt(parts[j+1]);
-                        if (txt !== "") words.push({ start: absStart, dur: parseInt(parts[j+2]), text: txt });
+                    
+                    // 🌟 核心侦测：如果数组第 0 位是空的，说明是以标签开头 (Tag First)
+                    const isTagFirst = (parts[0] === "");
+
+                    for (let j = 1; j < parts.length; j += 3) {
+                        const wStart = parseInt(parts[j]);
+                        const wDur = parseInt(parts[j+1]);
+                        
+                        // 根据侦测到的格式，向左或向右精准拾取对应的字词
+                        const txt = isTagFirst ? parts[j+2] : parts[j-1];
+                        
+                        const absStart = wStart >= lineStart ? wStart : lineStart + wStart;
+                        
+                        // 即使是全角/半角空格也会被保留，防止英文单词挤在一起
+                        if (txt !== undefined && txt !== "") {
+                            words.push({ start: absStart, dur: wDur, text: txt });
+                        }
                     }
                     if (words.length > 0) lyricList.push({ timeMs: lineStart, words, type: 'karaoke' });
                 } else {
+                    // LRC 兼容逻辑
                     const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(lineStr);
                     if (mLrc) {
                         const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3]));
-                        if (mLrc[4].trim() && mLrc[4].trim() !== "//") lyricList.push({ timeMs: ms, text: mLrc[4].trim(), type: 'lrc' });
+                        const txt = mLrc[4].trim();
+                        if (txt && txt !== "//") lyricList.push({ timeMs: ms, text: txt, type: 'lrc' });
                     }
                 }
             });
 
-            // 引擎 2：解析翻译并模糊吸附
-            if (rawTlyric) {
+            // 翻译对齐逻辑
+            if (rawTlyric && lyricList.length > 0) {
                 const tLines = rawTlyric.replace(/\\n/g, '\n').replace(/&quot;/g, '"').split('\n');
                 const tMap = [];
-                tLines.forEach(l => {
-                    const mL = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(l.trim());
-                    if (mL) {
-                        const ms = parseInt(mL[1])*60000 + parseInt(mL[2])*1000 + (mL[3].length===2?parseInt(mL[3])*10:parseInt(mL[3]));
-                        if (mL[4].trim() && mL[4].trim() !== "//") tMap.push({ ms, txt: mL[4].trim() });
+                tLines.forEach(tl => {
+                    const m = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(tl.trim());
+                    if (m) {
+                        const ms = parseInt(m[1])*60000 + parseInt(m[2])*1000 + (m[3].length===2?parseInt(m[3])*10:parseInt(m[3]));
+                        if (m[4].trim()) tMap.push({ ms, txt: m[4].trim() });
                     }
                 });
                 lyricList.forEach(line => {
@@ -136,11 +174,15 @@
 
             // 渲染 DOM
             const track = document.getElementById('lyric-track');
-            track.innerHTML = lyricList.map((l, i) => {
-                const inner = l.type === 'karaoke' ? l.words.map(w => `<span class="char" data-text="${w.text.replace(/"/g, '&quot;')}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`).join('') : l.text;
-                const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
-                return `<div class="lyric-line ${l.type==='karaoke'?'is-karaoke':''}" id="line-${i}"><div class="main-lyric">${inner}</div>${tHtml}</div>`;
-            }).join('');
+            if (lyricList.length === 0) {
+                track.innerHTML = '<div class="lyric-line active"><div class="main-lyric">暂无歌词数据</div></div>';
+            } else {
+                track.innerHTML = lyricList.map((l, i) => {
+                    const inner = l.type === 'karaoke' ? l.words.map(w => `<span class="char" data-text="${w.text.replace(/"/g, '&quot;')}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`).join('') : l.text;
+                    const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
+                    return `<div class="lyric-line ${l.type==='karaoke'?'is-karaoke':''}" id="line-${i}"><div class="main-lyric">${inner}</div>${tHtml}</div>`;
+                }).join('');
+            }
         }
 
         async function update() {

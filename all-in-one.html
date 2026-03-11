@@ -22,8 +22,7 @@
         .player-outer {
             width: 100%; height: 100%;
             display: flex; align-items: center; justify-content: center;
-            padding: 6cqh 8cqh;
-            box-sizing: border-box;
+            padding: 6cqh 8cqh; box-sizing: border-box;
             transition: opacity 1.5s ease;
         }
 
@@ -53,16 +52,38 @@
         .info-header { margin-bottom: 2cqh; text-align: left; }
         .title { font-size: 8cqh; font-weight: 900; color: var(--theme-color); letter-spacing: -0.02em; margin-bottom: 0.5cqh; text-shadow: 0 1cqh 3cqh rgba(0,0,0,0.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .artist { font-size: 3.5cqh; font-weight: 600; color: var(--theme-color-sub); text-transform: uppercase; }
+        
         .lyric-stage { flex-grow: 1; position: relative; mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%); overflow: hidden; }
         #lyric-track { position: absolute; width: 100%; top: 35%; transition: transform 0.8s var(--apple-spring); will-change: transform; }
 
-        .lyric-line { padding: 2cqh 4cqh; opacity: 0.35; transition: all 0.7s var(--apple-spring); transform: scale(0.92); transform-origin: left center; text-align: left; min-height: 8cqh; padding-bottom: 3cqh; display: flex; flex-direction: column; gap: 0.8cqh; }
+        .lyric-line {
+            padding: 2cqh 4cqh;
+            
+            /* 🌟 核心修复：限制基础宽度为 90%，为放大动画预留横向空间 */
+            width: 90%; 
+            /* 🌟 增加断词保护：防止超长英文连写撑爆容器 */
+            word-break: break-word; 
+            
+            opacity: 0.35; 
+            transition: all 0.7s var(--apple-spring);
+            transform: scale(0.92); 
+            transform-origin: left center; 
+            text-align: left; 
+            min-height: 8cqh; 
+            padding-bottom: 3cqh; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 0.8cqh; 
+        }
         .lyric-line.active { opacity: 1; transform: scale(1.08); filter: drop-shadow(0 0 1cqh rgba(255,255,255,0.25)); }
+        
         .main-lyric { font-size: 6cqh; font-weight: 700; color: var(--theme-color-sub); line-height: 1.3; }
         .sub-lyric { font-size: 3.2cqh; font-weight: 600; color: var(--theme-color-sub); line-height: 1.3; opacity: 0.8; }
+        
         .lyric-line.active:not(.is-karaoke) .main-lyric { color: var(--theme-color); }
         .lyric-line.active .sub-lyric { color: var(--theme-color); opacity: 1; }
 
+        /* 逐字高亮 */
         .char { position: relative; display: inline-block; color: var(--theme-color-sub); white-space: pre; }
         .lyric-line.active .char::after { content: attr(data-text); position: absolute; left: 0; top: 0; color: var(--theme-color); text-shadow: 0 0 1.5cqh rgba(255,255,255,0.6); clip-path: inset(0 calc(100% - var(--fill, 0%)) 0 0); transition: clip-path 0.05s linear; }
 
@@ -71,13 +92,12 @@
         .track { height: 1.2cqh; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
         .fill { height: 100%; width: 0%; background: var(--theme-color); border-radius: 999px; transition: width 0.3s linear; }
 
-        /* 🌟 极致浮雕 Standby 占位态 */
+        /* 极致浮雕 Standby 占位态 */
         .standby-layer {
             position: absolute; inset: 0;
             display: flex; align-items: center; justify-content: center;
             opacity: 0; transition: opacity 1.5s ease;
             z-index: 5; pointer-events: none;
-            /* 关键：使用混合模式让 Logo 嵌入背景材质 */
             mix-blend-mode: soft-light;
         }
 
@@ -87,38 +107,18 @@
 
         .standby-svg { width: 65%; height: 65%; overflow: visible; }
         .standby-svg path {
-            stroke-width: 4.17px;
-            fill: none;
-            stroke-dasharray: 6000;
-            stroke-dashoffset: 6000;
-            /* 初始阴影：模拟左上高光(白色)与右下深影(黑色)的交织 */
+            stroke-width: 4.17px; fill: none;
+            stroke-dasharray: 6000; stroke-dashoffset: 6000;
             stroke: rgba(255,255,255,0.4);
-            filter: drop-shadow(-2px -2px 1px rgba(255,255,255,0.3)) 
-                    drop-shadow(3px 3px 2px rgba(0,0,0,0.8));
+            filter: drop-shadow(-2px -2px 1px rgba(255,255,255,0.3)) drop-shadow(3px 3px 2px rgba(0,0,0,0.8));
         }
 
-        /* 浮雕专用的进场手写动画 + 动态光影呼吸 */
-        .is-hidden .path-anim {
-            animation: draw-emboss 4s cubic-bezier(0.45, 0, 0.55, 1) forwards, 
-                       emboss-light 10s infinite 4s ease-in-out;
-        }
+        .is-hidden .path-anim { animation: draw-emboss 4s cubic-bezier(0.45, 0, 0.55, 1) forwards, emboss-light 10s infinite 4s ease-in-out; }
 
-        @keyframes draw-emboss { 
-            to { stroke-dashoffset: 0; } 
-        }
-
-        /* 模拟光线在表面流动的“深呼吸” */
+        @keyframes draw-emboss { to { stroke-dashoffset: 0; } }
         @keyframes emboss-light {
-            0%, 100% { 
-                opacity: 0.3;
-                filter: drop-shadow(-1px -1px 2px rgba(255,255,255,0.2)) 
-                        drop-shadow(2px 2px 3px rgba(0,0,0,0.7));
-            }
-            50% { 
-                opacity: 0.6;
-                filter: drop-shadow(-3px -3px 4px rgba(255,255,255,0.4)) 
-                        drop-shadow(5px 5px 6px rgba(0,0,0,0.9));
-            }
+            0%, 100% { opacity: 0.3; filter: drop-shadow(-1px -1px 2px rgba(255,255,255,0.2)) drop-shadow(2px 2px 3px rgba(0,0,0,0.7)); }
+            50% { opacity: 0.6; filter: drop-shadow(-3px -3px 4px rgba(255,255,255,0.4)) drop-shadow(5px 5px 6px rgba(0,0,0,0.9)); }
         }
     </style>
 </head>
@@ -165,90 +165,172 @@
             return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
         }
 
+        // 🌟 核心引擎更新：双向自适应脱壳版
         function parseLyrics(raw, rawTlyric) {
-            lyricList = []; if (!raw) return;
-            let content = raw.includes('LyricContent="') ? raw.match(/LyricContent="([^"]+)"/)[1] : raw;
+            lyricList = [];
+            if (!raw) return;
+
+            // 1. 强力脱壳
+            let content = raw;
+            try {
+                const decoded = JSON.parse(raw.startsWith('"') ? JSON.parse(raw) : raw);
+                content = decoded.content || decoded.karaokeLyric || decoded.lrc || raw;
+            } catch (e) {
+                if (content.includes('LyricContent="')) {
+                    const match = content.match(/LyricContent="([^"]+)"/);
+                    if (match) content = match[1];
+                }
+            }
+
             content = content.replace(/\\n/g, '\n').replace(/&quot;/g, '"');
-            const lines = content.split('\n'); const qLine = /^\[(\d+),(\d+)\](.*)/;
+            const lines = content.split('\n');
+            const qLineRegex = /^\[(\d+),(\d+)\](.*)/;
+
             lines.forEach(l => {
-                const lineStr = l.trim(); const mQrc = qLine.exec(lineStr);
+                const lineStr = l.trim();
+                if (!lineStr || lineStr.startsWith('{')) return;
+
+                const mQrc = qLineRegex.exec(lineStr);
                 if (mQrc) {
-                    const lineStart = parseInt(mQrc[1]); const words = []; const parts = mQrc[3].split(/\((\d+),(\d+)\)/);
-                    for (let j = 0; j < parts.length - 1; j += 3) {
-                        const txt = parts[j]; const wStart = parseInt(parts[j+1]); const wDur = parseInt(parts[j+2]);
+                    const lineStart = parseInt(mQrc[1]);
+                    const contentStr = mQrc[3].trimStart();
+                    
+                    // 容错切割，将时间标签和歌词文字炸成数组
+                    const parts = contentStr.split(/\((\d+),\s*(\d+)[^)]*\)/);
+                    const words = [];
+                    
+                    // 方向侦测
+                    const isTagFirst = (parts[0] === "");
+
+                    for (let j = 1; j < parts.length; j += 3) {
+                        const wStart = parseInt(parts[j]);
+                        const wDur = parseInt(parts[j+1]);
+                        const txt = isTagFirst ? parts[j+2] : parts[j-1];
+                        
                         const absStart = wStart >= lineStart ? wStart : lineStart + wStart;
-                        if (txt !== "") words.push({ start: absStart, dur: wDur, text: txt });
+                        if (txt !== undefined && txt !== "") {
+                            words.push({ start: absStart, dur: wDur, text: txt });
+                        }
                     }
-                    if (words.length > 0) lyricList.push({ timeMs: lineStart, words: words, type: 'karaoke' });
+                    if (words.length > 0) lyricList.push({ timeMs: lineStart, words, type: 'karaoke' });
                 } else {
                     const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(lineStr);
                     if (mLrc) {
                         const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3]));
-                        const txt = mLrc[4].trim(); if (txt && txt !== "//") lyricList.push({ timeMs: ms, text: txt, type: 'lrc' });
+                        const txt = mLrc[4].trim();
+                        if (txt && txt !== "//") lyricList.push({ timeMs: ms, text: txt, type: 'lrc' });
                     }
                 }
             });
-            if (rawTlyric) {
-                let tContent = rawTlyric.replace(/\\n/g, '\n').replace(/&quot;/g, '"'); const tLines = tContent.split('\n'); const tMap = [];
-                tLines.forEach(l => {
-                    const mLrc = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(l.trim());
-                    if (mLrc) { const ms = parseInt(mLrc[1])*60000 + parseInt(mLrc[2])*1000 + (mLrc[3].length===2?parseInt(mLrc[3])*10:parseInt(mLrc[3])); const txt = mLrc[4].trim(); if (txt && txt !== "//") tMap.push({ ms, txt }); }
+
+            // 2. 翻译对齐
+            if (rawTlyric && lyricList.length > 0) {
+                const tLines = rawTlyric.replace(/\\n/g, '\n').replace(/&quot;/g, '"').split('\n');
+                const tMap = [];
+                tLines.forEach(tl => {
+                    const m = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/.exec(tl.trim());
+                    if (m) {
+                        const ms = parseInt(m[1])*60000 + parseInt(m[2])*1000 + (m[3].length===2?parseInt(m[3])*10:parseInt(m[3]));
+                        if (m[4].trim()) tMap.push({ ms, txt: m[4].trim() });
+                    }
                 });
                 lyricList.forEach(line => {
-                    let closest = null; let minDiff = 1500; tMap.forEach(t => { const diff = Math.abs(t.ms - line.timeMs); if (diff < minDiff) { minDiff = diff; closest = t.txt; } });
-                    if (closest) line.tlyric = closest;
+                    let best = tMap.reduce((prev, curr) => Math.abs(curr.ms - line.timeMs) < Math.abs(prev.ms - line.timeMs) ? curr : prev, {ms: -999999, txt: ""});
+                    if (Math.abs(best.ms - line.timeMs) < 1500) line.tlyric = best.txt;
                 });
             }
+
+            // 3. DOM 渲染
             const track = document.getElementById('lyric-track');
-            track.innerHTML = lyricList.map((l, i) => {
-                let innerMain = l.type === 'karaoke' ? l.words.map(w => `<span class="char" data-text="${w.text.replace(/"/g, '&quot;')}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`).join('') : l.text;
-                const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
-                return `<div class="lyric-line ${l.type === 'karaoke' ? 'is-karaoke' : ''}" id="line-${i}"><div class="main-lyric">${innerMain}</div>${tHtml}</div>`;
-            }).join('');
-            track.style.transform = `translateY(0)`; 
+            if (lyricList.length === 0) {
+                track.innerHTML = '<div class="lyric-line active"><div class="main-lyric">暂无歌词数据</div></div>';
+            } else {
+                track.innerHTML = lyricList.map((l, i) => {
+                    let innerMain = l.type === 'karaoke' ? l.words.map(w => `<span class="char" data-text="${w.text.replace(/"/g, '&quot;')}" data-start="${w.start}" data-dur="${w.dur}">${w.text}</span>`).join('') : l.text;
+                    const tHtml = l.tlyric ? `<div class="sub-lyric">${l.tlyric}</div>` : '';
+                    return `<div class="lyric-line ${l.type==='karaoke'?'is-karaoke':''}" id="line-${i}"><div class="main-lyric">${innerMain}</div>${tHtml}</div>`;
+                }).join('');
+                track.style.transform = `translateY(0)`; 
+            }
         }
 
         async function update() {
             try {
                 const q = await (await fetch(`${BASE_URL}/api/query`)).json();
+                
                 const container = document.getElementById('auto-hide-container');
                 const isPaused = q.player ? q.player.isPaused : q.isPaused;
                 const hasSong = q.player ? q.player.hasSong : true;
-                if (isPaused || !hasSong) { if (!pauseTimer) pauseTimer = setTimeout(() => container.classList.add('is-hidden'), 5000); }
-                else { if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; } container.classList.remove('is-hidden'); }
-                const track = q.track || q; const trackKey = (track.title || '') + (track.author || '');
-                if (trackKey !== currentTrackKey) {
-                    currentTrackKey = trackKey; lastTrackSwitchTime = Date.now();
-                    document.getElementById('title').innerText = track.title; document.getElementById('artist').innerText = track.author;
-                    document.getElementById('bg').style.backgroundImage = `url('${track.cover || track.picUrl || ''}')`;
-                    const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
-                    parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || "", lrcRes.translatedLyric || ""); currentIndex = -1;
+
+                // 待机自动隐藏逻辑
+                if (isPaused || !hasSong) {
+                    if (!pauseTimer) pauseTimer = setTimeout(() => container.classList.add('is-hidden'), 5000);
+                } else {
+                    if (pauseTimer) { clearTimeout(pauseTimer); pauseTimer = null; }
+                    container.classList.remove('is-hidden');
                 }
+
+                const track = q.track || q;
+                const trackKey = (track.title || '') + (track.author || '');
+
+                if (trackKey !== currentTrackKey) {
+                    currentTrackKey = trackKey;
+                    lastTrackSwitchTime = Date.now(); 
+                    
+                    document.getElementById('title').innerText = track.title;
+                    document.getElementById('artist').innerText = track.author;
+                    document.getElementById('bg').style.backgroundImage = `url('${track.cover || track.picUrl || ''}')`;
+                    
+                    const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
+                    parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || "", lrcRes.translatedLyric || "");
+                    currentIndex = -1;
+                }
+
                 const prog = await (await fetch(`${BASE_URL}/api/query/progress`)).json();
                 let currMs = prog.progress !== undefined ? prog.progress : prog;
+                
+                // 防延迟锁
                 if (Date.now() - lastTrackSwitchTime < 2000 && currMs > 5000) currMs = 0;
+
                 const totalMs = (track.duration || 0) < 100000 ? track.duration * 1000 : track.duration;
-                document.getElementById('time-curr').innerText = formatTime(currMs); document.getElementById('time-total').innerText = formatTime(totalMs);
+
+                document.getElementById('time-curr').innerText = formatTime(currMs);
+                document.getElementById('time-total').innerText = formatTime(totalMs);
                 document.getElementById('progress-bar').style.width = `${Math.min((currMs/Math.max(totalMs, 1))*100, 100)}%`;
-                let newIndex = -1; for (let i = lyricList.length - 1; i >= 0; i--) { if (currMs >= lyricList[i].timeMs) { newIndex = i; break; } }
+
+                let newIndex = -1;
+                for (let i = lyricList.length - 1; i >= 0; i--) {
+                    if (currMs >= lyricList[i].timeMs) { newIndex = i; break; }
+                }
+
                 if (newIndex !== -1 && lyricList[newIndex].type === 'karaoke') {
-                    const lineEl = document.getElementById(`line-${newIndex}`); if (lineEl) {
+                    const lineEl = document.getElementById(`line-${newIndex}`);
+                    if (lineEl) {
                         lineEl.querySelectorAll('.char').forEach(c => {
-                            const start = Number(c.getAttribute('data-start')); const dur = Number(c.getAttribute('data-dur')) || 1;
-                            let pct = 0; if (currMs >= start + dur) pct = 100; else if (currMs >= start) pct = ((currMs - start) / dur) * 100;
+                            const start = Number(c.getAttribute('data-start'));
+                            const dur = Number(c.getAttribute('data-dur')) || 1;
+                            let pct = currMs >= start + dur ? 100 : (currMs >= start ? ((currMs - start) / dur) * 100 : 0);
                             c.style.setProperty('--fill', `${pct}%`);
                         });
                     }
                 }
+
                 if (newIndex !== currentIndex && newIndex !== -1) {
-                    const trackEl = document.getElementById('lyric-track'); const lines = document.getElementsByClassName('lyric-line');
+                    const trackEl = document.getElementById('lyric-track');
+                    const lines = document.getElementsByClassName('lyric-line');
                     if (currentIndex !== -1 && lines[currentIndex]) lines[currentIndex].classList.remove('active');
-                    currentIndex = newIndex; const targetLine = lines[currentIndex];
-                    if (targetLine) { targetLine.classList.add('active'); trackEl.style.transform = `translateY(-${targetLine.offsetTop + (targetLine.offsetHeight / 2)}px)`; }
+                    currentIndex = newIndex;
+                    const targetLine = lines[currentIndex];
+                    if (targetLine) {
+                        targetLine.classList.add('active');
+                        const offset = targetLine.offsetTop + (targetLine.offsetHeight / 2);
+                        trackEl.style.transform = `translateY(-${offset}px)`;
+                    }
                 }
             } catch (e) {}
         }
-        setInterval(update, 50);
+        
+        setInterval(update, 50); // 50ms 丝滑刷新率
     </script>
 </body>
 </html>
