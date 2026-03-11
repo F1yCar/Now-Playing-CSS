@@ -1,0 +1,27 @@
+API接口
+GET
+http://localhost:9863/api/query(获取歌曲和播放器信息)
+http://localhost:9863/api/query/track(获取歌曲信息)
+http://localhost:9863/api/query/hasSong(获取当前是否有歌曲)
+http://localhost:9863/api/query/player(获取播放器信息)
+http://localhost:9863/api/query/progress(获取播放器进度条毫秒值)
+http://localhost:9863/api/lyric(获取歌词)！该接口返回完整歌词，歌词时间轴解析工作在前端完成
+http://localhost:9863/api/audio/devices(获取音频设备列表)
+http://localhost:9863/api/query/isConnected(获取是否成功连接平台)
+http://localhost:9863/api/version(获取最新版本信息)
+http://localhost:9863/api/system/appInfo(获取软件信息)
+http://localhost:9863/api/system/log/mainContent(获取主要日志内容)
+http://localhost:9863/api/system/networkInterfaces(获取网络接口)
+http://localhost:9863/api/system/lanDevices
+POST
+http://localhost:9863/api/cover/convert(获取歌曲封面Base64)
+{
+  "cover_url": "https://p1.music.126.net/vcyUJw7mfEzzMCgbJry31w==/109951169507121139.jpg?param=500y500"
+}
+http://localhost:9863/api/cover/videoUrl(获取歌曲动态封面URL)
+{
+  "songTitle": "After Hours",
+  "songAuthor": "The Weeknd"
+}
+WS
+ws://localhost:9863/api/ws/lyric(获取歌词信息)

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Now Playing API Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --panel-bg: #1a1d24;
+            --text-main: #e2e8f0;
+            --text-sub: #94a3b8;
+            --accent: #3b82f6;
+            --border: #334155;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Consolas', 'Microsoft YaHei', monospace;
+            margin: 0;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h2 { margin-top: 0; font-size: 1.2rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px dashed #333; padding-bottom: 4px; }
+        .label { color: var(--text-sub); }
+        .value { font-weight: bold; text-align: right; word-break: break-all; max-width: 60%; }
+        #cover-img { max-width: 150px; border-radius: 8px; display: block; margin: 10px 0; }
+        .log-box { background: #000; color: #0f0; padding: 10px; border-radius: 4px; height: 150px; overflow-y: auto; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+    <div class="panel">
+        <h2>🎵 核心状态 (GET /api/query)</h2>
+        <div class="data-row"><span class="label">连接状态:</span><span class="value" id="isConnected">检测中...</span></div>
+        <div class="data-row"><span class="label">当前有歌:</span><span class="value" id="hasSong">检测中...</span></div>
+        <div class="data-row"><span class="label">歌名:</span><span class="value" id="title">-</span></div>
+        <div class="data-row"><span class="label">歌手:</span><span class="value" id="author">-</span></div>
+        <div class="data-row"><span class="label">进度:</span><span class="value" id="progress">0 ms</span></div>
+        <div class="data-row"><span class="label">状态:</span><span class="value" id="playerState">-</span></div>
+        <img id="cover-img" src="" alt="封面加载中..." style="display:none;">
+    </div>
+
+    <div class="panel">
+        <h2>🖼️ 进阶封面 (POST 转换)</h2>
+        <div class="data-row"><span class="label">动态封面 URL:</span><span class="value" id="videoUrl">-</span></div>
+        <div class="data-row"><span class="label">Base64 长度:</span><span class="value" id="base64Len">-</span></div>
+        <p style="font-size: 0.8rem; color: var(--text-sub);">* 当歌曲切换时，自动触发 POST /api/cover/videoUrl 与 /api/cover/convert</p>
+    </div>
+
+    <div class="panel">
+        <h2>🎤 实时歌词 (WS /api/ws/lyric)</h2>
+        <div class="log-box" id="ws-lyric-box">等待 WebSocket 连接...</div>
+    </div>
+
+    <div class="panel">
+        <h2>⚙️ 系统信息 (GET /api/system/*)</h2>
+        <div class="data-row"><span class="label">软件版本:</span><span class="value" id="appVersion">-</span></div>
+        <div class="data-row"><span class="label">音频设备数:</span><span class="value" id="audioDevices">-</span></div>
+        <div class="data-row"><span class="label">网络接口数:</span><span class="value" id="netInterfaces">-</span></div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:9863';
+        let currentSongTitle = '';
+
+        // 工具函数：更新 DOM
+        const setVal = (id, val) => document.getElementById(id).innerText = val;
+
+        // 1. 初始化系统静态信息
+        async function fetchSystemInfo() {
+            try {
+                // 获取版本 
+                let verRes = await fetch(`${BASE_URL}/api/version`);
+                setVal('appVersion', (await verRes.json()).version || '未知');
+                
+                // 获取音频设备 
+                let audioRes = await fetch(`${BASE_URL}/api/audio/devices`);
+                setVal('audioDevices', (await audioRes.json()).length || 0);
+
+                // 获取网络接口 
+                let netRes = await fetch(`${BASE_URL}/api/system/networkInterfaces`);
+                setVal('netInterfaces', Object.keys(await netRes.json()).length || 0);
+            } catch (e) { console.error("系统信息加载失败", e); }
+        }
+
+        // 2. 核心状态轮询 (已修复字段映射 Bug)
+        async function pollCoreData() {
+            try {
+                // 连接状态 & 是否有歌
+                let connRes = await fetch(`${BASE_URL}/api/query/isConnected`);
+                setVal('isConnected', (await connRes.json()) ? '🟢 已连接' : '🔴 未连接');
+                
+                let hasSongRes = await fetch(`${BASE_URL}/api/query/hasSong`);
+                let hasSong = await hasSongRes.json();
+                setVal('hasSong', hasSong ? '是' : '否');
+
+                if (hasSong) {
+                    // 获取核心 Query
+                    let queryRes = await fetch(`${BASE_URL}/api/query`);
+                    let queryData = await queryRes.json();
+                    
+                    // 【GP 提示：按 F12 打开控制台，可以看到所有的原始字段名】
+                    console.log("Core API Response:", queryData);
+                    
+                    let track = queryData.track || queryData; 
+                    setVal('title', track.title || '未知');
+                    setVal('author', track.author || '未知');
+                    
+                    // 修复：状态解析 (适配 isPaused 布尔值)
+                    let isPaused = queryData.player ? queryData.player.isPaused : queryData.isPaused;
+                    setVal('playerState', isPaused ? '⏸️ 暂停' : '▶️ 播放');
+                    
+                    // 修复：封面解析 (穷举常见的字段名防空)
+                    let coverUrl = track.cover || track.coverUrl || track.albumArt || track.picUrl;
+                    let imgEl = document.getElementById('cover-img');
+                    
+                    if (coverUrl) {
+                        imgEl.src = coverUrl;
+                        imgEl.style.display = 'block';
+                    } else {
+                        imgEl.style.display = 'none'; // 没取到则隐藏，防止显示裂图图标
+                    }
+
+                    // 触发进阶封面抓取
+                    if (currentSongTitle !== track.title && coverUrl) {
+                        currentSongTitle = track.title;
+                        fetchAdvancedCovers(track.title, track.author, coverUrl);
+                    }
+                }
+
+                // 修复：进度条解析 (将 JSON 对象提取为数值)
+                let progRes = await fetch(`${BASE_URL}/api/query/progress`);
+                let progData = await progRes.json(); 
+                let progressMs = progData.progress !== undefined ? progData.progress : progData;
+                setVal('progress', `${progressMs} ms`);
+
+            } catch (e) {
+                // 忽略网络断开时的轮询报错
+            }
+        }
+
+        // 3. POST 请求处理 (动态封面和 Base64)
+        async function fetchAdvancedCovers(title, author, coverUrl) {
+            try {
+                // POST 视频封面 
+                let vidRes = await fetch(`${BASE_URL}/api/cover/videoUrl`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ songTitle: title, songAuthor: author })
+                });
+                let vidData = await vidRes.text(); // 假设返回的是文本URL
+                setVal('videoUrl', vidData || '无动态封面');
+
+                // POST 获取 Base64 
+                let b64Res = await fetch(`${BASE_URL}/api/cover/convert`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cover_url: coverUrl })
+                });
+                let b64Data = await b64Res.text();
+                setVal('base64Len', `已获取 (${b64Data.length} bytes)`);
+            } catch (e) {
+                setVal('videoUrl', '请求失败');
+                setVal('base64Len', '请求失败');
+            }
+        }
+
+        // 4. WebSocket 歌词连接
+        function initWebSocket() {
+            const ws = new WebSocket('ws://localhost:9863/api/ws/lyric'); // 
+            const box = document.getElementById('ws-lyric-box');
+            
+            ws.onopen = () => { box.innerHTML += '<div>🟢 WS 已连接</div>'; };
+            ws.onmessage = (e) => {
+                // 将最新歌词追加到顶部
+                box.innerHTML = `<div>> ${e.data}</div>` + box.innerHTML;
+            };
+            ws.onerror = () => { box.innerHTML += '<div style="color:red;">🔴 WS 连接错误</div>'; };
+            ws.onclose = () => { setTimeout(initWebSocket, 5000); }; // 断线重连
+        }
+
+        // 启动执行
+        fetchSystemInfo();
+        initWebSocket();
+        setInterval(pollCoreData, 1000); // 1秒轮询一次 
+
+    </script>
+</body>
+</html>

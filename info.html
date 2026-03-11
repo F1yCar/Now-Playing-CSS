@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --bg-image: none; 
+            --theme-bar-start: #ff4e50;         
+            --theme-bar-end: #f9d423;           
+            --theme-text-main: #ffffff;
+            --theme-text-sub: rgba(255, 255, 255, 0.5); 
+            --r-corner: 8cqh; 
+            /* 核心：定义全局等距变量，锁定最远边距 */
+            --safe-gap: 10cqh;
+            --noise-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.5' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.4'/%3E%3C/svg%3E");
+        }
+
+        html, body {
+            width: 100vw;
+            height: 100vh; 
+            margin: 0;
+            padding: 0;
+            background-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .player-wrapper {
+            aspect-ratio: 3.8 / 1; 
+            width: 100%;
+            height: 100%;
+            max-width: calc(100vh * 3.8);
+            max-height: calc(100vw / 3.8);
+            container-type: size; 
+            display: flex;
+            align-items: stretch;
+            /* 封面与面板之间的间距也锁定为等距 */
+            gap: var(--safe-gap); 
+            padding: var(--safe-gap);
+            box-sizing: border-box;
+        }
+        
+        .cover-container {
+            position: relative;
+            height: 100%;
+            aspect-ratio: 1 / 1; 
+            flex-shrink: 0;
+            border-radius: var(--r-corner);
+        }
+        
+        .cover-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 2;
+            opacity: 0.98; 
+            border-radius: var(--r-corner); 
+            box-shadow: 0 4cqh 12cqh rgba(0,0,0,0.5);
+        }
+
+        .cover-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0; left: 0;
+            z-index: 3; 
+            border-radius: var(--r-corner); 
+            display: none; 
+            opacity: 0.98;
+        }
+
+        .cover-glow {
+            position: absolute;
+            top: 2%; 
+            left: 0%;
+            width: 100%;
+            height: 100%;
+            background-color: var(--theme-bar-start);
+            filter: blur(6cqh);
+            z-index: 1;
+            opacity: 0.95;
+            transition: background-color 0.8s ease;
+        }
+
+        .info-panel {
+            position: relative;
+            /* 面板内边距完全等距锁定 */
+            padding: var(--safe-gap);
+            display: flex;
+            flex-direction: column;
+            /* 使用 space-between 确保上下元素各占顶底边缘 */
+            justify-content: space-between;
+            flex-grow: 1; 
+            min-width: 0; 
+            height: 100%;
+            overflow: hidden;
+            box-sizing: border-box; 
+            border-radius: var(--r-corner);
+            box-shadow: 0 4cqh 12cqh rgba(0,0,0,0.4);
+        }
+
+        .info-panel::before {
+            content: '';
+            position: absolute;
+            top: -20%; left: -20%; right: -20%; bottom: -20%; 
+            background-image: var(--bg-image);
+            background-size: cover;
+            background-position: center;
+            filter: blur(12cqh); 
+            opacity: 0.5; 
+            z-index: 0;
+            transition: background-image 0.8s ease;
+        }
+
+        .info-panel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: 
+                linear-gradient(135deg, rgba(15,15,20,0.4) 0%, rgba(10,10,15,0.7) 100%),
+                var(--noise-texture);
+            background-blend-mode: overlay;
+            opacity: 0.35;
+            z-index: 1;
+        }
+
+        .text-group, .progress-group {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+        }
+
+        .text-group {
+            display: flex;
+            flex-direction: column;
+            /* 歌名与歌手的间距保持紧凑，不使用全局等距以免松散 */
+            gap: 1.5cqh;
+            align-items: flex-start;
+        }
+
+        .marquee-wrapper {
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            text-align: left;
+            -webkit-mask-image: linear-gradient(to right, #000 85%, transparent 100%);
+            mask-image: linear-gradient(to right, #000 85%, transparent 100%);
+            padding-bottom: 1.5cqh; 
+        }
+        
+        .title, .artist {
+            display: inline-block;
+            white-space: nowrap;
+            transition: color 0.8s ease;
+            padding-right: 5cqh; 
+            transform-origin: left center;
+        }
+
+        .title {
+            font-size: 20cqh; /* 略微调小一点以适应等距布局 */
+            font-weight: 800; 
+            color: var(--theme-text-main); 
+            text-shadow: 0 2cqh 4cqh rgba(0,0,0,0.6); 
+            line-height: 1.25;
+            letter-spacing: -0.03em; 
+        }
+        
+        .artist {
+            font-size: 9cqh; 
+            color: var(--theme-text-sub);
+            font-weight: 500; 
+            text-transform: uppercase; 
+            letter-spacing: 0.15em; 
+            text-shadow: 0 1cqh 2cqh rgba(0,0,0,0.5);
+            line-height: 1.2;
+        }
+
+        .scroll-anim {
+            animation: pingpong 10s ease-in-out infinite alternate;
+        }
+
+        @keyframes pingpong {
+            0%, 20% { transform: translateX(0); } 
+            80%, 100% { transform: translateX(var(--scroll-dist)); }
+        }
+
+        .progress-group {
+            display: flex;
+            flex-direction: column;
+            gap: 2cqh; 
+            width: 100%;
+        }
+        
+        .time-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 8.5cqh; 
+            font-weight: 600; 
+            color: var(--theme-text-sub); 
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.05em;
+            transition: color 0.8s ease;
+            width: 100%;
+        }
+
+        .progress-track {
+            width: 100%;
+            height: 2.5cqh;
+            background-color: rgba(255, 255, 255, 0.15); 
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--theme-bar-start), var(--theme-bar-end));
+            width: 0%;
+            border-radius: 9999px;
+            box-shadow: 0 0 2cqh rgba(0,0,0,0.2);
+            transition: width 0.3s linear, background 0.8s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-wrapper" id="player-ui" style="display: none;">
+        <div class="cover-container">
+            <div class="cover-glow"></div>
+            <img id="cover" class="cover-img" src="" crossorigin="anonymous">
+            <video id="cover-video" class="cover-video" autoplay loop muted playsinline></video>
+        </div>
+        
+        <div class="info-panel">
+            <div class="text-group">
+                <div class="marquee-wrapper" id="title-wrap">
+                    <div class="title" id="title">-</div>
+                </div>
+                <div class="marquee-wrapper" id="artist-wrap">
+                    <div class="artist" id="artist">-</div>
+                </div>
+            </div>
+            
+            <div class="progress-group">
+                <div class="time-row">
+                    <span id="time-current">00:00</span>
+                    <span id="time-total">00:00</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:9863';
+        let currentTrackKey = ""; 
+        let hlsInstance = null; 
+
+        const formatTime = (ms) => {
+            let totalSeconds = Math.floor(ms / 1000);
+            let m = Math.floor(totalSeconds / 60);
+            let s = Math.floor(totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        };
+
+        function analyzeColor(imgEl) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = imgEl.width || 50;
+            canvas.height = imgEl.height || 50;
+
+            try {
+                ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                let r = 0, g = 0, b = 0, count = 0;
+                
+                for (let i = 0; i < data.length; i += 16) {
+                    if (data[i] + data[i+1] + data[i+2] > 50) {
+                        r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+                    }
+                }
+                if (count === 0) { r = 100; g = 100; b = 100; count = 1; }
+
+                r = Math.floor(r / count); g = Math.floor(g / count); b = Math.floor(b / count);
+
+                const lightR = Math.min(255, r * 1.6);
+                const lightG = Math.min(255, g * 1.6);
+                const lightB = Math.min(255, b * 1.6);
+
+                const textMainR = Math.min(255, r + 120);
+                const textMainG = Math.min(255, g + 120);
+                const textMainB = Math.min(255, b + 120);
+
+                const root = document.documentElement;
+                root.style.setProperty('--theme-bar-start', `rgb(${r}, ${g}, ${b})`);
+                root.style.setProperty('--theme-bar-end', `rgb(${lightR}, ${lightG}, ${lightB})`);
+                root.style.setProperty('--theme-text-main', `rgb(${textMainR}, ${textMainG}, ${textMainB})`);
+                root.style.setProperty('--theme-text-sub', `rgba(${textMainR}, ${textMainG}, ${textMainB}, 0.65)`);
+            } catch (e) {}
+        }
+
+        document.getElementById('cover').addEventListener('load', function() {
+            analyzeColor(this);
+        });
+
+        function checkAndApplyMarquee(id) {
+            const el = document.getElementById(id);
+            const wrap = document.getElementById(id + '-wrap');
+            el.classList.remove('scroll-anim');
+            void el.offsetWidth; 
+            if (el.scrollWidth > wrap.clientWidth) {
+                const overflowDist = el.scrollWidth - wrap.clientWidth;
+                el.style.setProperty('--scroll-dist', `-${overflowDist}px`);
+                el.classList.add('scroll-anim');
+            }
+        }
+
+        async function update() {
+            try {
+                let hasSong = await (await fetch(`${BASE_URL}/api/query/hasSong`)).json();
+                if (!hasSong) { document.getElementById('player-ui').style.display = 'none'; return; }
+                document.getElementById('player-ui').style.display = 'flex';
+
+                let q = await (await fetch(`${BASE_URL}/api/query`)).json();
+                let track = q.track || q;
+                
+                let trackTitle = track.title || 'Unknown';
+                let trackAuthor = track.author || 'Unknown';
+                let trackKey = trackTitle + "-" + trackAuthor;
+
+                if (trackKey !== currentTrackKey) {
+                    currentTrackKey = trackKey;
+                    
+                    document.getElementById('title').innerText = trackTitle;
+                    document.getElementById('artist').innerText = trackAuthor;
+
+                    setTimeout(() => {
+                        checkAndApplyMarquee('title');
+                        checkAndApplyMarquee('artist');
+                    }, 50);
+                    
+                    let newCoverUrl = track.cover || track.coverUrl || track.albumArt || '';
+                    document.getElementById('cover').src = newCoverUrl;
+                    document.documentElement.style.setProperty('--bg-image', `url('${newCoverUrl}')`);
+
+                    const vidEl = document.getElementById('cover-video');
+                    vidEl.style.display = 'none';
+                    if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+                    vidEl.src = '';
+                    
+                    try {
+                        let vidRes = await fetch(`${BASE_URL}/api/cover/videoUrl`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ songTitle: trackTitle, songAuthor: trackAuthor })
+                        });
+                        let videoUrl = await vidRes.text();
+                        
+                        if (videoUrl && videoUrl.trim() !== '' && videoUrl.indexOf('http') === 0) {
+                            vidEl.style.display = 'block';
+                            if (videoUrl.includes('.m3u8')) {
+                                if (Hls.isSupported()) {
+                                    hlsInstance = new Hls();
+                                    hlsInstance.loadSource(videoUrl);
+                                    hlsInstance.attachMedia(vidEl);
+                                    hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+                                        vidEl.play().catch(e => {});
+                                    });
+                                } else if (vidEl.canPlayType('application/vnd.apple.mpegurl')) {
+                                    vidEl.src = videoUrl;
+                                    vidEl.addEventListener('loadedmetadata', function() { vidEl.play().catch(e => {}); });
+                                }
+                            } else {
+                                vidEl.src = videoUrl;
+                                vidEl.play().catch(e => {});
+                            }
+                        }
+                    } catch (err) {}
+                }
+
+                let progData = await (await fetch(`${BASE_URL}/api/query/progress`)).json();
+                let currentMs = progData.progress !== undefined ? progData.progress : progData;
+                let durationMs = (track.duration || 0) < 100000 ? (track.duration * 1000) : track.duration; 
+
+                document.getElementById('time-current').innerText = formatTime(currentMs);
+                document.getElementById('time-total').innerText = durationMs > 0 ? formatTime(durationMs) : '00:00';
+                
+                let pct = durationMs > 0 ? (currentMs / durationMs) * 100 : 0;
+                document.getElementById('progress-bar').style.width = `${Math.min(pct, 100)}%`;
+
+            } catch (e) {}
+        }
+        
+        setInterval(update, 500);
+    </script>
+</body>
+</html>

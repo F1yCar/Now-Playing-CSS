@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        :root {
+            --theme-color: #ffffff;
+            --theme-color-sub: rgba(255, 255, 255, 0.45);
+            --r-corner: 4cqh;
+            --apple-spring: cubic-bezier(0.25, 1, 0.2, 1);
+        }
+
+        html, body {
+            width: 100vw; height: 100vh; margin: 0; padding: 0;
+            background-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+            overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .player-outer {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+            padding: 6cqh 8cqh;
+            box-sizing: border-box;
+        }
+
+        .main-card {
+            width: 100%; height: 100%;
+            aspect-ratio: 1.6 / 1; 
+            container-type: size;
+            position: relative;
+            border-radius: var(--r-corner);
+            overflow: hidden;
+            box-shadow: 0 4cqh 10cqh rgba(0,0,0,0.6);
+            background-color: #000;
+        }
+
+        .bg-cover {
+            position: absolute;
+            inset: -20%; 
+            background-size: cover;
+            background-position: center;
+            filter: blur(10cqh) brightness(0.55); 
+            z-index: 0;
+            transition: background-image 0.8s ease;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%);
+            z-index: 1;
+        }
+
+        .content-layer {
+            position: relative; z-index: 2;
+            height: 100%; padding: 6cqh 8cqh;
+            display: flex; flex-direction: column;
+            box-sizing: border-box;
+        }
+
+        .info-header { margin-bottom: 2cqh; text-align: left; }
+
+        .title {
+            font-size: 8cqh; font-weight: 900;
+            color: var(--theme-color);
+            letter-spacing: -0.02em; margin-bottom: 0.5cqh;
+            text-shadow: 0 1cqh 3cqh rgba(0,0,0,0.5);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .artist {
+            font-size: 3.5cqh; font-weight: 600;
+            color: var(--theme-color-sub);
+            letter-spacing: 0.05em; text-transform: uppercase;
+        }
+
+        /* 舞台区域：增加羽化遮罩，弱化边缘截断感 */
+        .lyric-stage {
+            flex-grow: 1; position: relative;
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 15%, #000 85%, transparent 100%);
+            overflow: hidden;
+        }
+
+        #lyric-track {
+            position: absolute; width: 100%;
+            top: 35%; /* 调整基准线 */
+            transition: transform 0.8s var(--apple-spring);
+            will-change: transform;
+        }
+
+        .lyric-line {
+            padding: 2cqh 4cqh; /* 增加左右 padding 防裁断 */
+            font-size: 6cqh; font-weight: 700;
+            color: var(--theme-color-sub);
+            opacity: 0.35;
+            transition: all 0.7s var(--apple-spring);
+            transform: scale(0.92); transform-origin: left center;
+            text-align: left;
+            line-height: 1.3;
+            min-height: 8cqh; 
+            /* 解决下行字母裁切 */
+            padding-bottom: 3cqh; 
+        }
+
+        .lyric-line.active {
+            color: var(--theme-color);
+            opacity: 1; transform: scale(1.08);
+            filter: drop-shadow(0 0 1cqh rgba(255,255,255,0.25));
+        }
+
+        .progress-footer { margin-top: 2cqh; }
+
+        .time-row {
+            display: flex; justify-content: space-between;
+            font-size: 3cqh; font-weight: 700;
+            color: var(--theme-color-sub);
+            margin-bottom: 1.5cqh;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .track { height: 1.2cqh; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
+        .fill { height: 100%; width: 0%; background: var(--theme-color); border-radius: 999px; transition: width 0.3s linear; }
+    </style>
+</head>
+<body>
+    <div class="player-outer">
+        <div class="main-card">
+            <div id="bg" class="bg-cover"></div>
+            <div class="overlay"></div>
+            <div class="content-layer">
+                <div class="info-header">
+                    <div class="title" id="title">-</div>
+                    <div class="artist" id="artist">-</div>
+                </div>
+                <div class="lyric-stage">
+                    <div id="lyric-track"></div>
+                </div>
+                <div class="progress-footer">
+                    <div class="time-row">
+                        <span id="time-curr">00:00</span>
+                        <span id="time-total">00:00</span>
+                    </div>
+                    <div class="track"><div class="fill" id="progress-bar"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:9863';
+        let currentTrackKey = "";
+        let lyricList = [];
+        let currentIndex = -1;
+
+        function formatTime(ms) {
+            let s = Math.floor(ms / 1000);
+            return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+        }
+
+        function parseLRC(raw) {
+            lyricList = [];
+            if (!raw) return;
+            const lines = raw.split('\n');
+            const timeReg = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+            lines.forEach(l => {
+                const m = timeReg.exec(l);
+                if (m) {
+                    const timeMs = parseInt(m[1])*60000 + parseInt(m[2])*1000 + (m[3].length===2?parseInt(m[3])*10:parseInt(m[3]));
+                    const txt = l.replace(timeReg, '').trim();
+                    if (txt && txt!=="//" && !txt.startsWith('<?xml')) lyricList.push({ timeMs, text: txt });
+                }
+            });
+            const track = document.getElementById('lyric-track');
+            track.innerHTML = lyricList.map((l, i) => `<div class="lyric-line" id="line-${i}">${l.text}</div>`).join('');
+            track.style.transform = `translateY(0)`; 
+        }
+
+        async function update() {
+            try {
+                const q = await (await fetch(`${BASE_URL}/api/query`)).json();
+                const track = q.track || q;
+                const trackKey = (track.title || '') + (track.author || '');
+
+                if (trackKey !== currentTrackKey) {
+                    currentTrackKey = trackKey;
+                    document.getElementById('title').innerText = track.title;
+                    document.getElementById('artist').innerText = track.author;
+                    document.getElementById('bg').style.backgroundImage = `url('${track.cover || track.picUrl || ''}')`;
+                    
+                    const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
+                    parseLRC(lrcRes.lrc || lrcRes.lyric || lrcRes.data || "");
+                    currentIndex = -1;
+                }
+
+                const prog = await (await fetch(`${BASE_URL}/api/query/progress`)).json();
+                const currMs = prog.progress !== undefined ? prog.progress : prog;
+                const totalMs = (track.duration || 0) < 100000 ? track.duration * 1000 : track.duration;
+
+                document.getElementById('time-curr').innerText = formatTime(currMs);
+                document.getElementById('time-total').innerText = formatTime(totalMs);
+                document.getElementById('progress-bar').style.width = `${Math.min((currMs/totalMs)*100, 100)}%`;
+
+                let newIndex = -1;
+                for (let i = lyricList.length - 1; i >= 0; i--) {
+                    if (currMs >= lyricList[i].timeMs) { newIndex = i; break; }
+                }
+
+                if (newIndex !== currentIndex && newIndex !== -1) {
+                    const trackEl = document.getElementById('lyric-track');
+                    const lines = document.getElementsByClassName('lyric-line');
+                    if (currentIndex !== -1 && lines[currentIndex]) lines[currentIndex].classList.remove('active');
+                    currentIndex = newIndex;
+                    const targetLine = lines[currentIndex];
+                    if (targetLine) {
+                        targetLine.classList.add('active');
+                        // 动态计算该行的几何中心点
+                        const offset = targetLine.offsetTop + (targetLine.offsetHeight / 2);
+                        trackEl.style.transform = `translateY(-${offset}px)`;
+                    }
+                }
+            } catch (e) {}
+        }
+        setInterval(update, 100);
+    </script>
+</body>
+</html>
