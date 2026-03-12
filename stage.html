@@ -4,115 +4,171 @@
     <meta charset="UTF-8">
     <style>
         :root {
+            /* 锁死纯白主题 */
             --theme-text-main: #ffffff;
-            --theme-text-sub: rgba(255, 255, 255, 0.4);
+            --theme-text-sub: rgba(255, 255, 255, 0.45);
+            --r-corner: 1vh; 
             --apple-spring: cubic-bezier(0.25, 1, 0.2, 1);
         }
 
         html, body {
             width: 100vw; height: 100vh; margin: 0; padding: 0;
-            background-color: transparent; /* 🌟 恢复透明 */
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+            background-color: transparent; 
             overflow: hidden;
-            display: flex; align-items: center; justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
         }
 
-        /* 🌟 浮雕压花水印：保持 soft-light 以适配任何底层背景 */
-        .standby-watermark {
-            position: absolute; inset: 0;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 8vh; font-weight: 800; text-align: center;
-            line-height: 1.3; letter-spacing: -0.02em;
-            mix-blend-mode: soft-light;
-            color: rgba(255, 255, 255, 0.3);
-            text-shadow: -1px -1px 2px rgba(255,255,255,0.2), 2px 2px 3px rgba(0,0,0,0.8);
+        .stage-wrapper {
+            position: absolute; inset: 0; z-index: 3;
+            display: flex; align-items: center; 
+            padding-left: 15vw; padding-right: 8vw;
             transition: opacity 1.5s var(--apple-spring);
-            pointer-events: none; z-index: 1;
-            white-space: pre-wrap; 
-            opacity: 0;
         }
 
-        /* 🌟 状态控制：仅在暂停时切换可见性 */
-        .stage {
-            width: 100%; height: 90vh;
+        .main-stage {
+            width: 100%; display: flex; align-items: center; gap: 8vw;
+        }
+
+        .left-panel { flex: 0 0 auto; width: min(40vh, 30vw); display: flex; flex-direction: column; }
+        .cover-box { 
+            width: 100%; aspect-ratio: 1/1; border-radius: var(--r-corner); 
+            box-shadow: 0 2vh 6vh rgba(0,0,0,0.7); 
+            margin-bottom: 3vh; background: rgba(0,0,0,0.2); 
+        }
+        .cover-img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-corner); transition: opacity 0.5s; }
+        
+        /* 1. 歌名：作为核心，拉高不透明度，使其最“实” */
+        .title { 
+            font-size: 4.2vh; font-weight: 800; 
+            /* 🌟 核心修正：提升至 0.95，保证绝对的视觉统治力 */
+            color: rgba(255, 255, 255, 0.95); 
+            margin-bottom: 0.5vh; line-height: 1.3; letter-spacing: -0.02em; 
+            display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.9); 
+        }
+
+        /* 2. 歌手：作为附属，大幅降低不透明度，使其更“透” */
+        .artist { 
+            font-size: 2vh; font-weight: 600; 
+            /* 🌟 核心修正：降低至 0.55，呈现出一种精致的半透明磨砂感 */
+            color: rgba(255, 255, 255, 0.55); 
+            margin-bottom: 3vh; 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8); 
+        }
+
+        /* 3. 进度条时间：对齐歌名的扎实感，保证功能性 */
+        .time-row { 
+            display: flex; justify-content: space-between; font-size: 1.5vh; font-weight: 700; 
+            color: rgba(255, 255, 255, 0.85); 
+            margin-bottom: 1vh; font-variant-numeric: tabular-nums; 
+            text-shadow: 0 1px 5px rgba(0,0,0,0.9); 
+        }
+        
+        .track-bar { 
+            height: 4px; 
+            background: rgba(255, 255, 255, 0.15); /* 👈 增加底色亮度 */
+            border-radius: 2px; 
+            overflow: hidden; 
+            box-shadow: 0 1px 4px rgba(0,0,0,0.5); 
+        }
+        .fill-bar { 
+            height: 100%; width: 0%; background: var(--theme-text-main); 
+            transition: width 0.3s linear; 
+            box-shadow: 0 0 4px rgba(0,0,0,0.5); 
+        }
+
+        .right-panel {
+            flex: 1; height: 85vh; position: relative;
             mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 80%, transparent 100%);
             -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 20%, #000 80%, transparent 100%);
-            position: relative; overflow: hidden;
-            z-index: 2;
-            transition: opacity 1.5s var(--apple-spring);
         }
 
-        body.is-paused .stage { opacity: 0; pointer-events: none; }
-        body.is-paused .standby-watermark { opacity: 1; }
-
         #lyric-track {
-            position: absolute; width: 100%; top: 45%; 
+            position: absolute; width: 90%; top: 45%; 
             transition: transform 0.8s var(--apple-spring);
-            will-change: transform; display: flex; flex-direction: column; align-items: center;
+            will-change: transform; display: flex; flex-direction: column; 
+            align-items: flex-start;
         }
 
         .lyric-line {
-            padding: 3vh 0; width: 85%; /* 🌟 宽度保护防止溢出 */
-            word-break: break-word; text-align: center;
+            padding: 3vh 0; width: 100%;
             transition: all 0.8s var(--apple-spring);
-            transform-origin: center center; transform: scale(0.85);
-            opacity: 0.35; filter: blur(2px);
+            transform-origin: left center; transform: scale(0.85);
+            /* 🌟 关键修改：将基础透明度拉满到 1，亮度由颜色本身控制 */
+            opacity: 1; 
+            filter: blur(2px); /* 靠虚化来区分非活跃行，而不是靠变暗 */
             display: flex; flex-direction: column; gap: 1vh;
         }
 
-        .lyric-line.active { opacity: 1; filter: blur(0); transform: scale(1.1); }
-
-        /* 🌟 核心修复：当整行激活时，点亮翻译文字 */
-        .lyric-line.active .sub-lyric { 
-            /* 提升到主色亮度 */
-            color: var(--theme-text-main); 
-            /* 移除透明度压制 */
-            opacity: 1; 
-            /* 增加微弱阴影保证清晰度 */
-            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
-            /* 增加平滑过渡 */
-            transition: all 0.5s ease;
+        .lyric-line.active { 
+            transform: scale(1.1); 
+            filter: blur(0) brightness(1.2); /* 🌟 增加 20% 的额外亮度 */
         }
 
-        /* 初始状态保持暗淡 */
-        .sub-lyric { 
-            font-size: 3.5vh; 
-            font-weight: 700; 
-            color: var(--theme-text-sub); 
-            opacity: 0.7; 
-            transition: all 0.8s var(--apple-spring);
+        .lyric-line.active .main-lyric {
+            color: rgba(255, 255, 255, 1); /* 100% 纯白 */
         }
 
-        .main-lyric { font-size: 7vh; font-weight: 900; color: var(--theme-text-sub); line-height: 1.2; }
-        .sub-lyric { font-size: 3.5vh; font-weight: 700; color: var(--theme-text-sub); opacity: 0.7; }
+        .main-lyric { 
+            font-size: 5vh; font-weight: 900; 
+            /* 🌟 非活跃行给 0.6 的白色，配合 blur 产生精致的远景感 */
+            color: rgba(255, 255, 255, 0.6); 
+            line-height: 1.2; text-shadow: 0 2px 8px rgba(0,0,0,0.7); 
+        }
+        .sub-lyric { font-size: 2.5vh; font-weight: 700; color: var(--theme-text-sub); opacity: 0.7; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
 
         .char { position: relative; display: inline-block; color: var(--theme-text-sub); white-space: pre; }
+        
         .lyric-line.active .char::after {
             content: attr(data-text); position: absolute; left: 0; top: 0;
             color: var(--theme-text-main);
-            /* 🌟 核心修复：上下外扩 0.3em 的裁剪空间，防止 gjy 切脚 */
-            /* 参数顺序：上、右、下、左。负值代表向外扩张裁剪区域 */
             clip-path: inset(-0.3em calc(100% - var(--fill, 0%)) -0.3em -0.1em);
-            
-            /* 优化：减弱发光效果，使边缘更扎实 */
-            text-shadow: 0 0 1.5vh rgba(255,255,255,0.3);
-            
             transition: clip-path 0.05s linear;
         }
+
+        .lyric-line.active:not(.is-karaoke) .main-lyric { color: var(--theme-text-main); }
+        .lyric-line.active .sub-lyric { color: var(--theme-text-main); opacity: 1; }
+
+        .standby-watermark {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 8vh; font-weight: 800; text-align: center; line-height: 1.3; letter-spacing: -0.02em;
+            mix-blend-mode: soft-light; color: rgba(255,255,255,0.4);
+            text-shadow: -1px -1px 2px rgba(255,255,255,0.2), 2px 2px 5px rgba(0,0,0,0.9);
+            transition: opacity 1.5s var(--apple-spring); pointer-events: none; z-index: 4; opacity: 0; white-space: pre-wrap; 
+        }
+
+        body.is-paused .stage-wrapper { opacity: 0; filter: blur(10px); pointer-events: none; }
+        body.is-paused .standby-watermark { opacity: 1; }
     </style>
 </head>
 <body>
-    <div class="stage">
-        <div id="lyric-track"></div>
+    <div class="stage-wrapper">
+        <div class="main-stage">
+            <div class="left-panel">
+                <div class="cover-box"><img id="cover" class="cover-img" src="" crossorigin="anonymous"></div>
+                <div class="title" id="title">-</div>
+                <div class="artist" id="artist">-</div>
+                <div class="progress-group">
+                    <div class="time-row"><span id="time-curr">0:00</span><span id="time-total">-0:00</span></div>
+                    <div class="track-bar"><div class="fill-bar" id="fill"></div></div>
+                </div>
+            </div>
+            <div class="right-panel">
+                <div id="lyric-track"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="standby-watermark">Now Playing - CSS&#10;Design by F1y / Car</div>
+    <div class="standby-watermark">Now Playing - Stage&#10;Design by F1y / Car</div>
 
     <script>
         const BASE_URL = 'http://localhost:9863';
         let lyricList = [], currentTrackKey = "", currentIndex = -1, lastTrackSwitchTime = 0;
 
-        // 🌟 核心：全格式自适应解析引擎
+        function formatTime(ms) {
+            let s = Math.floor(ms / 1000); return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+        }
+
         function parseLyrics(raw, rawTlyric) {
             lyricList = []; if (!raw) return;
             let content = raw;
@@ -188,13 +244,22 @@
                 const player = q.player || q;
                 const track = q.track || q;
 
-                // 🌟 状态切换：暂停显示水印，播放显示歌词
                 if (!player.hasSong || player.isPaused) { document.body.classList.add('is-paused'); }
                 else { document.body.classList.remove('is-paused'); }
 
                 const trackKey = (track.title || '') + (track.author || '');
                 if (trackKey !== currentTrackKey) {
-                    currentTrackKey = trackKey; lastTrackSwitchTime = Date.now();
+                    currentTrackKey = trackKey; 
+                    lastTrackSwitchTime = Date.now();
+                    
+                    document.getElementById('title').innerText = track.title || "-";
+                    document.getElementById('artist').innerText = track.author || "-";
+
+                    const coverUrl = track.cover || track.picUrl || "";
+                    if (coverUrl) {
+                        document.getElementById('cover').src = coverUrl;
+                    }
+
                     const lrcRes = await (await fetch(`${BASE_URL}/api/lyric`)).json();
                     parseLyrics(lrcRes.karaokeLyric || lrcRes.lrc || "", lrcRes.translatedLyric || "");
                     currentIndex = -1;
@@ -203,6 +268,12 @@
                 const prog = await (await fetch(`${BASE_URL}/api/query/progress`)).json();
                 let currMs = prog.progress !== undefined ? prog.progress : prog;
                 if (Date.now() - lastTrackSwitchTime < 2000 && currMs > 5000) currMs = 0;
+
+                const durMs = (track.duration||0)<100000?track.duration*1000:track.duration;
+                document.getElementById('time-curr').innerText = formatTime(currMs);
+                const remainMs = durMs - currMs;
+                document.getElementById('time-total').innerText = remainMs > 0 ? `-${formatTime(remainMs)}` : "0:00";
+                document.getElementById('fill').style.width = `${Math.min((currMs/Math.max(durMs, 1))*100, 100)}%`;
 
                 let newIndex = -1;
                 for (let i = lyricList.length - 1; i >= 0; i--) {
